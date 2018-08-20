@@ -12,8 +12,8 @@ import (
     "github.com/gin-gonic/gin"
 )
 
-// Create a cache with a default expiration time of 15 minutes
-var c = cache.New(15*time.Minute, 30*time.Minute)
+// Create a cache with a default expiration time of 90 minutes
+var c = cache.New(90*time.Minute, 120*time.Minute)
 
 func main() {}
 
@@ -35,15 +35,15 @@ func init() {
         })
     })
     r.GET("/user", func(c *gin.Context) {
-        user := os.Getenv("USERNAME")
+        user := os.Getenv("IG_USERNAME")
         c.String(http.StatusOK, "Hello %s", user)
     })
     // Parameters in querystring
     // Query string parameters are parsed using the existing underlying request object.
     // The request responds to a url matching:  /welcome?firstname=Jane&lastname=Doe
     r.GET("/instagram", func(c *gin.Context) {
-        user := os.Getenv("USERNAME")
-        password := os.Getenv("PASSWORD")
+        user := os.Getenv("IG_USERNAME")
+        password := os.Getenv("IG_PASSWORD")
         limit := c.DefaultPostForm("limit", "25")
         if len(limit) < 1  {
             limit = "25"
@@ -56,19 +56,20 @@ func init() {
         }
         instagram := instagram(*insta, lmt)
 
-        // c.JSON(200, instagram) // instagram here should be struct not JSON string
-        c.String(http.StatusOK, instagram) // This works but isn't kosher
+        c.JSON(200, *instagram) // instagram here needs to be struct not JSON string
+        // This works (and looks better because is nicely formatted) but isn't kosher
+        // c.String(http.StatusOK, instagram)
     })
     r.POST("/instagram", func(c *gin.Context) {
         // post form not querystring
         user := c.PostForm("user")
         if len(user) < 1  {
-            user = os.Getenv("USERNAME")
+            user = os.Getenv("IG_USERNAME")
             log.Println("user:", user)
         }
         password := c.PostForm("pwd")
         if len(password) < 1  {
-            password = os.Getenv("PASSWORD")
+            password = os.Getenv("IG_PASSWORD")
         }
         limit := c.DefaultPostForm("limit", "25")
         if len(limit) < 1  {
@@ -82,9 +83,11 @@ func init() {
         }
         instagram := instagram(*insta, lmt)
 
-        c.String(http.StatusOK, instagram) // This works but isn't kosher
+        // c.String(http.StatusOK, instagram) // This also works but isn't kosher
+        c.JSON(200, *instagram)
     })
     r.Run() // listen and serve on 0.0.0.0:8080
+    // For Google AppEngine
     // Handle all requests using net/http
     http.Handle("/", r)
 }
@@ -121,7 +124,8 @@ func login(user string, password string) (*goinsta.Instagram, error) {
     returns <= limit images
     processing is slow, takes to long for AWS Proxy timeout
 */
-func instagram(insta goinsta.Instagram, limit int) string {
+// func instagram(insta goinsta.Instagram, limit int) string {
+func instagram(insta goinsta.Instagram, limit int) *[]instaImage {
     var Images []instaImage
     media := insta.Account.Feed()
     i := 0
@@ -141,13 +145,14 @@ MediaLoop:
             if i >= limit { break MediaLoop } // We only need so many images
         }
     }
+    // Alternative solution return JSON as formatted string
     // Create JSON object from Images
-    jsonImages, jsonErr3 := json.MarshalIndent(Images, "    ", "    ")
-    if jsonErr3 != nil {
-        log.Println(jsonErr3.Error())
-    }
-
-    return string(jsonImages)
+    // jsonImages, jsonErr3 := json.MarshalIndent(Images, "    ", "    ")
+    // if jsonErr3 != nil {
+    //     log.Println(jsonErr3.Error())
+    // }`
+    // return string(jsonImages)
+    return &Images
 }
 
 /* cast - cast struct into JSON, into smaller struct */
