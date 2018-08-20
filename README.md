@@ -22,14 +22,20 @@ Works well. Requires some further development.
   gcloud app logs tail -s default
 ```
 - get JSON file with pictures metatdata from user feed
-``` 
+```
   curl -X GET -o instagram.json 'uri://appengine-ednpoint/instagram?limit=100' 
 ```
+- turn off AppEngine to save on billing
+```
+  gcloud app versions stop dev
+```
+
 
 ## TODO
 
 - get metadata in chunks
 - get random pictures
+- add re-tries or delays to go around of IG limits
 
 ## Limitations
 
@@ -37,5 +43,6 @@ Works well. Requires some further development.
 
 ## What's interesting about it?
 
-- I am using [goinsta](https://github.com/ahmdrz/goinsta) - good but it has it's limitations as Import/Export operations are hardcoded for storing session in file - not possible with Lambda. So my login() function is storing Instagram object in cache instead.
+- I am using [goinsta](https://github.com/ahmdrz/goinsta) - good but it has it's limitations as Import/Export operations are hardcoded for storing session in file - ~~not possible with Lambda~~(and I have adapted that in half an hour from AWS Lambda code). 
+- So my login() function is storing Instagram object in cache instead. Simple wise programmer memcache sort of.
 -
