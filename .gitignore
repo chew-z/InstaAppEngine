@@ -1,0 +1,5 @@
+# deploy script has many secrets
+deploy.sh
+
+Gopkg.toml
+Gopkg.lock
