@@ -9,6 +9,7 @@ import (
     "net/http"
     "github.com/ahmdrz/goinsta"
     "github.com/patrickmn/go-cache"
+    "github.com/thinkerou/favicon"
     "github.com/gin-gonic/gin"
 )
 
@@ -21,7 +22,7 @@ func main() {}
 func init() {
     // Starts a new Gin instance with no middle-ware
     r := gin.New()
-
+    r.Use(favicon.New("./favicon.png"))
     // Define your handlers
     r.GET("/", func(c *gin.Context) {
         c.String(http.StatusOK, "Hello World!")
@@ -44,11 +45,12 @@ func init() {
     r.GET("/instagram", func(c *gin.Context) {
         user := os.Getenv("IG_USERNAME")
         password := os.Getenv("IG_PASSWORD")
-        limit := c.DefaultPostForm("limit", "25")
+        limit := c.DefaultQuery("limit", "25")
         if len(limit) < 1  {
             limit = "25"
         }
         lmt, _ := strconv.Atoi(limit)
+        log.Println("Limit =", lmt)
         insta, err := login(user, password)
         if err != nil {
             log.Println(err.Error())
