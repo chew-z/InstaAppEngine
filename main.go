@@ -1,16 +1,17 @@
 package main
 
 import (
-    "encoding/json"
-    "log"
-    "os"
-    "strconv"
-    "time"
-    "net/http"
-    "github.com/ahmdrz/goinsta"
-    "github.com/patrickmn/go-cache"
-    "github.com/thinkerou/favicon"
-    "github.com/gin-gonic/gin"
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/ahmdrz/goinsta/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/patrickmn/go-cache"
+	"github.com/thinkerou/favicon"
 )
 
 // Create a cache with a default expiration time of 90 minutes
@@ -20,189 +21,139 @@ func main() {}
 
 // This function's name is a must. App Engine uses it to drive the requests properly.
 func init() {
-    // Starts a new Gin instance with no middle-ware
-    r := gin.New()
-    r.Use(favicon.New("./favicon.png"))
-    // Define your handlers
-    r.GET("/", func(c *gin.Context) {
-        c.String(http.StatusOK, "Hello World!")
-    })
-    r.GET("/ping", func(c *gin.Context) {
-        c.String(http.StatusOK, "pong")
-    })
-    r.POST("/ping", func(c *gin.Context) {
-        c.JSON(200, gin.H{
-            "message": "pong",
-        })
-    })
-    r.GET("/user", func(c *gin.Context) {
-        user := os.Getenv("IG_USERNAME")
-        c.String(http.StatusOK, "Hello %s", user)
-    })
-    // Parameters in querystring
-    // Query string parameters are parsed using the existing underlying request object.
-    // The request responds to a url matching:  /welcome?firstname=Jane&lastname=Doe
-    r.GET("/instagram", func(c *gin.Context) {
-        user := os.Getenv("IG_USERNAME")
-        password := os.Getenv("IG_PASSWORD")
-        limit := c.DefaultQuery("limit", "25")
-        if len(limit) < 1  {
-            limit = "25"
-        }
-        lmt, _ := strconv.Atoi(limit)
-        log.Println("Limit =", lmt)
-        insta, err := login(user, password)
-        if err != nil {
-            log.Println(err.Error())
-            c.String(http.StatusOK, err.Error())
-        }
-        instagram := instagram(*insta, lmt)
+	// Starts a new Gin instance with no middle-ware
+	r := gin.New()
+	r.Use(favicon.New("./favicon.png"))
+	// Define your handlers
+	r.GET("/ping", func(c *gin.Context) {
+		c.String(http.StatusOK, "pong")
+	})
+	r.GET("/json", getJSON)
 
-        c.JSON(200, *instagram) // instagram here needs to be struct not JSON string
-        // This works (and looks better because is nicely formatted) but isn't kosher
-        // c.String(http.StatusOK, instagram)
-    })
-    r.POST("/instagram", func(c *gin.Context) {
-        // post form not querystring
-        user := c.PostForm("user")
-        if len(user) < 1  {
-            user = os.Getenv("IG_USERNAME")
-            log.Println("user:", user)
-        }
-        password := c.PostForm("pwd")
-        if len(password) < 1  {
-            password = os.Getenv("IG_PASSWORD")
-        }
-        limit := c.DefaultPostForm("limit", "25")
-        if len(limit) < 1  {
-            limit = "25"
-        }
-        lmt, _ := strconv.Atoi(limit)
-        insta, err := login(user, password)
-        if err != nil {
-            log.Println(err.Error())
-            c.String(http.StatusOK, err.Error())
-        }
-        instagram := instagram(*insta, lmt)
-
-        // c.String(http.StatusOK, instagram) // This also works but isn't kosher
-        c.JSON(200, *instagram)
-    })
-    r.Run() // listen and serve on 0.0.0.0:8080
-    // For Google AppEngine
-    // Handle all requests using net/http
-    http.Handle("/", r)
+	r.Run() // listen and serve on 0.0.0.0:8080
+	// For Google AppEngine
+	// Handle all requests using net/http
+	http.Handle("/", r)
 }
 
+func getJSON(c *gin.Context) {
+	user := c.DefaultQuery("user", os.Getenv("USERNAME"))
+	log.Println("user:", user)
+	password := c.DefaultQuery("pwd", os.Getenv("PASSWORD"))
+	limit := c.DefaultQuery("limit", "25")
+	lmt, _ := strconv.Atoi(limit)
+	insta, err := login(user, password)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	data := instagram(*insta, lmt)
+	c.JSON(http.StatusOK, data)
+	return
+}
 
 /* login
-    returns goinsta.Instagram object
-    based on saved JSON object or via new login for user
-    TODO - better edge cases
+returns goinsta.Instagram object
+based on saved JSON object or via new login for user
+TODO - better edge cases
 */
 func login(user string, password string) (*goinsta.Instagram, error) {
-    var insta *goinsta.Instagram
-    gc, found := c.Get(user)
-    if found {
-        log.Println("Found session", user)
-        insta = gc.(*goinsta.Instagram)
-    } else {
-        log.Println("Not found session", user, "Logging with user/password")
-        insta = goinsta.New(user, password)
-        err := insta.Login()
-        if err != nil {
-            log.Println(err.Error())
-            return insta, err
-        }
-        c.Set(user, insta, cache.DefaultExpiration)
-    }
+	var insta *goinsta.Instagram
+	gc, found := c.Get(user)
+	if found {
+		log.Println("Found session", user)
+		insta = gc.(*goinsta.Instagram)
+	} else {
+		log.Println("Not found session", user, "Logging with user/password")
+		insta = goinsta.New(user, password)
+		err := insta.Login()
+		if err != nil {
+			log.Println(err.Error())
+			return insta, err
+		}
+		c.Set(user, insta, cache.DefaultExpiration)
+	}
 
-    return insta, nil
+	return insta, nil
 }
 
-
 /* instagram
-    returns JSON with images metadata (links, places, likers etc.)
-    returns <= limit images
-    processing is slow, takes to long for AWS Proxy timeout
+returns JSON with images metadata (links, places, likers etc.)
+returns <= limit images
+processing is slow, takes to long for AWS Proxy timeout
 */
-// func instagram(insta goinsta.Instagram, limit int) string {
 func instagram(insta goinsta.Instagram, limit int) *[]instaImage {
-    var Images []instaImage
-    media := insta.Account.Feed()
-    i := 0
-// Label break (break out of two loops with single break statement)
-MediaLoop: 
-    for media.Next() { // 2-step iteration 1) Going through pages with Next()
-        for _, item := range media.Items { // 2) Iterating through items in a page
-            i++
-            if len(item.Images.Versions) > 0 {
-                // Cast image metadata into smaller object
-                Image := cast(item)
-                // tm := time.Unix(Image.TakenAt, 0)
-                // log.Println(i, ":", Image.ID, "-", tm)
-                // Append image to array
-                Images = append(Images, Image)
-            }
-            if i >= limit { break MediaLoop } // We only need so many images
-        }
-    }
-    // Alternative solution return JSON as formatted string
-    // Create JSON object from Images
-    // jsonImages, jsonErr3 := json.MarshalIndent(Images, "    ", "    ")
-    // if jsonErr3 != nil {
-    //     log.Println(jsonErr3.Error())
-    // }`
-    // return string(jsonImages)
-    return &Images
+	var Images []instaImage
+	media := insta.Account.Feed()
+	i := 0
+	// Label break (break out of two loops with single break statement)
+MediaLoop:
+	for media.Next() { // 2-step iteration 1) Going through pages with Next()
+		for _, item := range media.Items { // 2) Iterating through items in a page
+			i++
+			if len(item.Images.Versions) > 0 {
+				// Cast image metadata into smaller object
+				Image := cast(item)
+				// tm := time.Unix(Image.TakenAt, 0)
+				// log.Println(i, ":", Image.ID, "-", tm)
+				// Append image to array
+				// log.Println(Image.ImageVersions2.Candidates[0].URL)
+				Images = append(Images, Image)
+			}
+			if i >= limit {
+				break MediaLoop
+			} // We only need so many images
+		}
+	}
+	return &Images
 }
 
 /* cast - cast struct into JSON, into smaller struct */
 func cast(item interface{}) instaImage {
-    var Image instaImage
-    // create JSON from item
-    jsonMedia, jsonErr1 := json.MarshalIndent(item, "    ", "    ")
-    if jsonErr1 != nil {
-        panic (jsonErr1.Error())
-    }
-    // Unmarshal JSON into Image
-    jsonErr2 := json.Unmarshal(jsonMedia, &Image)
-    if jsonErr2 != nil {
-        panic (jsonErr2.Error())
-    }
-    return Image
+	var Image instaImage
+	// create JSON from item
+	jsonMedia, jsonErr1 := json.MarshalIndent(item, "    ", "    ")
+	if jsonErr1 != nil {
+		panic(jsonErr1.Error())
+	}
+	// Unmarshal JSON into Image
+	jsonErr2 := json.Unmarshal(jsonMedia, &Image)
+	if jsonErr2 != nil {
+		panic(jsonErr2.Error())
+	}
+	return Image
 }
 
-/* instaImage   
-    Instagram Image striped down */
+/* instaImage
+   Instagram Image striped down */
 type instaImage struct {
-    TakenAt         int64  `json:"taken_at"`
-    ID              string `json:"id"`
-    DeviceTimestamp int64  `json:"device_timestamp"`
-    MediaType       int    `json:"media_type"`
-    ClientCacheKey  string `json:"client_cache_key"`
-    Caption         struct {
-        Text string `json:"text"`
-        User struct {
-            Username string `json:"username"`
-        } `json:"user,omitempty"`
-    } `json:"caption"`
-    LikeCount      int      `json:"like_count"`
-    TopLikers      []string `json:"top_likers,omitempty"`
-    ImageVersions2 struct {
-        Candidates []struct {
-            Width  int    `json:"width"`
-            Height int    `json:"height"`
-            URL    string `json:"url"`
-        } `json:"candidates"`
-    } `json:"image_versions2"`
-    OriginalWidth  int `json:"original_width"`
-    OriginalHeight int `json:"original_height"`
-    Location       struct {
-        Name      string `json:"name"`
-        City      string `json:"city"`
-        ShortName string `json:"short_name"`
-        Lng       float64    `json:"lng"`
-        Lat       float64    `json:"lat"`
-    } `json:"location,omitempty"`
+	TakenAt         int64  `json:"taken_at"`
+	ID              string `json:"id"`
+	DeviceTimestamp int64  `json:"device_timestamp"`
+	MediaType       int    `json:"media_type"`
+	ClientCacheKey  string `json:"client_cache_key"`
+	Caption         struct {
+		Text string `json:"text"`
+		User struct {
+			Username string `json:"username"`
+		} `json:"user,omitempty"`
+	} `json:"caption"`
+	LikeCount      int      `json:"like_count"`
+	TopLikers      []string `json:"top_likers,omitempty"`
+	ImageVersions2 struct {
+		Candidates []struct {
+			Width  int    `json:"width"`
+			Height int    `json:"height"`
+			URL    string `json:"url"`
+		} `json:"candidates"`
+	} `json:"image_versions2"`
+	OriginalWidth  int `json:"original_width"`
+	OriginalHeight int `json:"original_height"`
+	Location       struct {
+		Name      string  `json:"name"`
+		City      string  `json:"city"`
+		ShortName string  `json:"short_name"`
+		Lng       float64 `json:"lng"`
+		Lat       float64 `json:"lat"`
+	} `json:"location,omitempty"`
 }

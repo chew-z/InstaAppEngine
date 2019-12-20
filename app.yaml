@@ -1,5 +1,5 @@
 ---
-runtime: go111
+runtime: go113
 env: standard
 
 # Trick #1
@@ -21,4 +21,5 @@ handlers:
   - url: /.*
     script: auto
 
-env_variables:
+includes:
+  - .env.yaml
